@@ -1,0 +1,143 @@
+name: PanelRest
+options:
+  bundleIdPrefix: com.denis
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  developmentLanguage: zh-Hans
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: D53PZCN22U
+    PRODUCT_BUNDLE_IDENTIFIER: com.denis.panelrest
+    PRODUCT_NAME: PanelRest
+    MARKETING_VERSION: "1.0.1"
+    CURRENT_PROJECT_VERSION: "8"
+    INFOPLIST_FILE: Resources/Info.plist
+    ENABLE_HARDENED_RUNTIME: YES
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    COMBINE_HIDPI_IMAGES: YES
+    GENERATE_INFOPLIST_FILE: NO
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+targets:
+  # App Store 版：沙盒、只用公开 API（画面全黑 → mini-LED 分区背光熄灭）
+  PanelRest:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Resources
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Resources/PanelRest-AppStore.entitlements
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) APPSTORE
+        CODE_SIGN_STYLE: Automatic
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: Apple Development
+        Release:
+          CODE_SIGN_IDENTITY: Apple Development   # 自动签名：归档用开发证书，导出上传时 Xcode 换成发布证书
+    dependencies:
+      - target: PanelRestControls
+      - sdk: AppKit.framework
+      - sdk: Carbon.framework
+      - sdk: ServiceManagement.framework
+      - sdk: IOKit.framework
+      - sdk: SystemConfiguration.framework
+  # 直装版（自用 / 官网分发）：额外把显示器背光亮度调到 0，可一键替换系统触发角
+  PanelRestDirect:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Resources
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_NAME: PanelRest
+        CODE_SIGN_ENTITLEMENTS: Resources/PanelRest-Direct.entitlements
+        CODE_SIGN_STYLE: Manual
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: Developer ID Application
+        Release:
+          CODE_SIGN_IDENTITY: Developer ID Application
+          # 公证要求：不带调试权限，签名带安全时间戳
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          OTHER_CODE_SIGN_FLAGS: --timestamp
+    dependencies:
+      - target: PanelRestControlsDirect
+      - sdk: AppKit.framework
+      - sdk: Carbon.framework
+      - sdk: ServiceManagement.framework
+      - sdk: IOKit.framework
+      - sdk: SystemConfiguration.framework
+  # 控制中心按钮（WidgetKit 扩展，macOS 26+）。两个版本签名方式不同，所以分两个 target，源码相同
+  PanelRestControls:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Controls
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Resources/Localizable.xcstrings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.denis.panelrest.controls
+        PRODUCT_NAME: PanelRestControls
+        INFOPLIST_FILE: Controls/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Controls/Controls.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
+  PanelRestControlsDirect:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Controls
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Resources/Localizable.xcstrings
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.denis.panelrest.controls
+        PRODUCT_NAME: PanelRestControls
+        INFOPLIST_FILE: Controls/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Controls/Controls.entitlements
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: Developer ID Application
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        OTHER_CODE_SIGN_FLAGS: --timestamp
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
+schemes:
+  PanelRest:
+    build:
+      targets:
+        PanelRest: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  PanelRestDirect:
+    build:
+      targets:
+        PanelRestDirect: all
+    run:
+      config: Release
+    archive:
+      config: Release

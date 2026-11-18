@@ -1,0 +1,17 @@
+# 只公开源代码、构建脚本和 README 用的图片（白名单）
+/*
+!/Sources/
+!/Controls/
+!/Resources/
+!/scripts/
+!/docs/
+/docs/*
+!/docs/images/
+!/project.yml
+!/build.sh
+!/README.md
+!/README.zh-CN.md
+!/LICENSE
+!/.gitignore
+._*
+.DS_Store
