@@ -39,7 +39,7 @@ PanelRest takes a different approach. The display stays connected and the Mac st
 
 ## Features
 
-- **True black in one keystroke**: `⌃⌥⌘B` or `⌘Esc` (both customizable), a hot corner, or after a set idle time.
+- **True black in one keystroke**: `⌃⌥⌘B` or `⌘Esc` (both customizable), a hot corner, or after a set idle time. The idle timer pauses while you watch a video (YouTube in Safari or Chrome, IINA, QuickTime and others).
 - **Wakes only for real humans**: synthetic mouse and keyboard events from AI agents, remote-control tools or scripts are ignored. Your first real touch brings the screen back.
 - **Smooth fades**: fade out 0.3 s and fade in 0.5 s by default, both adjustable. Pressing the shortcut again during a fade-in turns it back around.
 - **Keeps the Mac awake** while black, so agents and downloads don't pause.

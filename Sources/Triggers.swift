@@ -423,20 +423,72 @@ enum SystemDisplaySleep {
 }
 
 extension IdleWatcher {
-    /// 有其他 App 持有「阻止显示器休眠」（视频播放器、Keynote、会议软件等）
-    /// 前台 App（例如正在全屏播放视频）要求保持显示器亮着时返回 true。
-    /// 后台程序（AI 代理、Claude、下载工具等）的「阻止显示器休眠」不算，否则 AI 干活时定时永远不会触发。
+    /// 「阻止显示器休眠」的两种类型名。Chrome / Electron / DaVinci Resolve 用的是旧名
+    /// NoDisplaySleepAssertion（2026-11-18 实测 Chrome 播放视频时为 "Video Wake Lock"），只认新名会漏掉它们。
+    private static let displayAssertionTypes: Set<String> = [
+        kIOPMAssertionTypePreventUserIdleDisplaySleep as String, "NoDisplaySleepAssertion"
+    ]
+    private typealias ResponsibleFn = @convention(c) (pid_t) -> pid_t
+    /// 系统私有函数：XPC 辅助进程（如 WebKit 的播放进程）属于哪个 App
+    private static let responsiblePid: ResponsibleFn? =
+        dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid")
+            .map { unsafeBitCast($0, to: ResponsibleFn.self) }
+
+    /// 有 App 正在播放视频、演示等，要求保持显示器亮着时返回 true（视频播放器、浏览器、Keynote、会议软件）。
+    /// 2026-11-18 实测：Safari 播 YouTube 为 PreventUserIdleDisplaySleep「HTMLMediaElement playback」，Chrome 为 NoDisplaySleepAssertion「Video Wake Lock」，
+    /// IINA、QuickTime 为 PreventUserIdleDisplaySleep。只播音乐时浏览器不会请求，照常按时黑屏。
+    /// 只算「看得见的普通 App」：它是前台 App，或者它有窗口正显示在屏幕上（例如视频开在另一块屏幕）。
+    /// 命令行工具（caffeinate、AI 代理脚本）和没有可见窗口的后台程序不算，否则 AI 干活时定时永远不会触发。
     static func otherAppKeepsDisplayOn() -> Bool {
-        guard let front = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              front != ProcessInfo.processInfo.processIdentifier else { return false }
         var out: Unmanaged<CFDictionary>?
         guard IOPMCopyAssertionsByProcess(&out) == kIOReturnSuccess,
               let byPid = out?.takeRetainedValue() as? [NSNumber: [[String: Any]]] else { return false }
-        let mine = byPid[NSNumber(value: front)] ?? []
-        return mine.contains { a in
-            (a[kIOPMAssertionTypeKey as String] as? String) == (kIOPMAssertionTypePreventUserIdleDisplaySleep as String)
-                && ((a[kIOPMAssertionLevelKey as String] as? NSNumber)?.intValue ?? 0) > 0
+        let me = ProcessInfo.processInfo.processIdentifier
+        var holders: [pid_t] = []
+        for (pid, list) in byPid {
+            let p = pid.int32Value
+            guard p != me else { continue }
+            for a in list where ((a[kIOPMAssertionLevelKey as String] as? NSNumber)?.intValue ?? 0) > 0 {
+                if displayAssertionTypes.contains(a[kIOPMAssertionTypeKey as String] as? String ?? "") { holders.append(p) }
+            }
         }
+        guard !holders.isEmpty else { return false }
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        var visible: Set<pid_t>?   // 有屏幕上普通窗口的进程，用到时才读
+        for p in holders {
+            guard let app = owningApp(of: p), app.processIdentifier != me else { continue }
+            if app.processIdentifier == front { return true }
+            if visible == nil { visible = onScreenWindowOwners() }
+            if visible!.contains(app.processIdentifier) { return true }
+        }
+        return false
+    }
+
+    /// 持有请求的进程所属的普通 App。App 本身持有（Chrome、IINA、QuickTime）直接返回；
+    /// App 内部的辅助进程（.app / .xpc 里的程序）找它负责的 App；/usr/bin/caffeinate 这类命令行工具返回 nil。
+    private static func owningApp(of pid: pid_t) -> NSRunningApplication? {
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            return app.activationPolicy == .regular ? app : nil
+        }
+        var buf = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 else { return nil }
+        let path = String(cString: buf)
+        guard path.contains(".app/") || path.contains(".xpc/"),
+              let r = responsiblePid?(pid), r > 0, r != pid,
+              let app = NSRunningApplication(processIdentifier: r), app.activationPolicy == .regular else { return nil }
+        return app
+    }
+
+    /// 在屏幕上显示着普通窗口（第 0 层、不透明度 > 0）的进程
+    private static func onScreenWindowOwners() -> Set<pid_t> {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return [] }
+        var s = Set<pid_t>()
+        for w in list where (w[kCGWindowLayer as String] as? Int) == 0
+            && ((w[kCGWindowAlpha as String] as? Double) ?? 1) > 0 {
+            if let p = w[kCGWindowOwnerPID as String] as? Int { s.insert(pid_t(p)) }
+        }
+        return s
     }
 }
 

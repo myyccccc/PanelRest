@@ -32,6 +32,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
         updateStatusItem()
         listenForControlCenter()
+        // 自测：PanelRest --check-playback → 打印「有 App 在播放视频等，要求屏幕保持亮着」的判断结果后退出
+        if CommandLine.arguments.contains("--check-playback") {
+            print("playback-keeps-display-on=\(IdleWatcher.otherAppKeepsDisplayOn())")
+            exit(0)
+        }
         // 自测：PanelRest --selftest 3 → 黑屏 3 秒后恢复并退出（不弹引导）
         if let i = CommandLine.arguments.firstIndex(of: "--selftest") {
             let secs = Double(CommandLine.arguments.dropFirst(i + 1).first ?? "") ?? 3
