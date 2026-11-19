@@ -20,14 +20,13 @@ struct SettingsView: View {
     @State private var tab = UserDefaults.standard.integer(forKey: "settingsTab")   // 测试截图用：-settingsTab 4
     var body: some View {
         VStack(spacing: PanelMetrics.gap) {
-            PanelTabBar(selection: $tab, items: ["通用", "触发", "过渡", "唤醒", "关于"])
+            // 2026-11-18 用户要求：五个标签合并成三个，打开先看到常调的（空闲多久黑屏、过渡、唤醒）
+            PanelTabBar(selection: $tab, items: ["黑屏", "触发", "通用"])
             Group {
                 switch tab {
-                case 0: GeneralPane()
+                case 0: BlackoutPane()
                 case 1: TriggerPane()
-                case 2: TransitionPane()
-                case 3: WakePane()
-                default: AboutPane()
+                default: GeneralPane()
                 }
             }
         }
@@ -212,7 +211,34 @@ struct TipRow: View {
     }
 }
 
-// MARK: - 通用
+// MARK: - 黑屏（打开面板先看到这页：常调的都在这里）
+struct BlackoutPane: View {
+    @ObservedObject var s = Settings.shared
+    @ObservedObject var b = Blackout.shared
+    var body: some View {
+        VStack(spacing: PanelMetrics.gap) {
+            IdleSection()
+            Card(title: "过渡") {
+                SliderRow(title: "熄灭", value: $s.fadeOutDuration, range: 0...3, step: 0.1, text: formatSeconds(s.fadeOutDuration))
+                RowDivider()
+                SliderRow(title: "点亮", value: $s.fadeInDuration, range: 0...3, step: 0.1, text: formatSeconds(s.fadeInDuration))
+            }
+            Card(title: "唤醒") {
+                ToggleRow(title: "触碰时自动恢复", isOn: $s.wakeOnInput)
+                if s.wakeOnInput {
+                    RowDivider()
+                    SliderRow(title: "黑屏后先忽略", value: $s.wakeGrace, range: 0...5, step: 0.5, text: formatSeconds(s.wakeGrace))
+                }
+            }
+            HStack {
+                Spacer()
+                Button("预览") { b.preview() }.buttonStyle(PanelButtonStyle(kind: .bar, prominent: true)).disabled(b.active)
+            }
+        }
+    }
+}
+
+// MARK: - 通用（不常改的：启动、显示器、权限、关于）
 struct GeneralPane: View {
     @ObservedObject var s = Settings.shared
     @State private var needsApproval = LoginItem.needsApproval
@@ -229,13 +255,22 @@ struct GeneralPane: View {
                 }
                 RowDivider()
                 ToggleRow(title: "菜单栏图标", isOn: $s.showMenuBarIcon)
-            }
-            Card {
+                RowDivider()
+                ToggleRow(title: "黑屏时保持电脑唤醒", isOn: $s.keepAwake)
+                RowDivider()
                 Row(title: "显示器") {
                     PanelMenu(title: s.displayName) {
                         ForEach(displayNames, id: \.self) { n in Button(n) { s.displayName = n } }
                     }
                 }
+            }
+            PermissionSection()
+            AboutCard()
+            HStack(spacing: 8) {
+                Button("使用引导") { AppDelegate.shared?.showOnboarding() }.buttonStyle(PanelButtonStyle(kind: .bar))
+                Button("恢复默认") { confirmReset() }.buttonStyle(PanelButtonStyle(kind: .bar))
+                Spacer()
+                Button("退出") { NSApp.terminate(nil) }.buttonStyle(PanelButtonStyle(kind: .bar))
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -245,6 +280,15 @@ struct GeneralPane: View {
     private var displayNames: [String] {
         Array(Set(Blackout.displays().map(\.name) + [s.displayName])).filter { !$0.isEmpty }.sorted()
     }
+    /// 面板是无边框浮层，用系统提醒框确认
+    private func confirmReset() {
+        let a = NSAlert()
+        a.messageText = String(localized: "恢复所有设置为默认值？")
+        a.addButton(withTitle: String(localized: "恢复默认"))
+        a.addButton(withTitle: String(localized: "取消"))
+        NSApp.activate(ignoringOtherApps: true)
+        if a.runModal() == .alertFirstButtonReturn { Settings.shared.resetToDefaults() }
+    }
 }
 
 // MARK: - 触发
@@ -253,7 +297,6 @@ struct TriggerPane: View {
         VStack(spacing: PanelMetrics.gap) {
             ShortcutSection()
             HotCornerSection()
-            IdleSection()
         }
     }
 }
@@ -366,46 +409,6 @@ struct IdleSection: View {
     }
 }
 
-// MARK: - 过渡
-struct TransitionPane: View {
-    @ObservedObject var s = Settings.shared
-    @ObservedObject var b = Blackout.shared
-    var body: some View {
-        VStack(spacing: PanelMetrics.gap) {
-            Card {
-                SliderRow(title: "熄灭", value: $s.fadeOutDuration, range: 0...3, step: 0.1, text: formatSeconds(s.fadeOutDuration))
-                RowDivider()
-                SliderRow(title: "点亮", value: $s.fadeInDuration, range: 0...3, step: 0.1, text: formatSeconds(s.fadeInDuration))
-            }
-            HStack {
-                Button("恢复默认") { s.fadeOutDuration = 0.3; s.fadeInDuration = 0.5 }.buttonStyle(PanelButtonStyle(kind: .bar))
-                Spacer()
-                Button("预览") { b.preview() }.buttonStyle(PanelButtonStyle(kind: .bar, prominent: true)).disabled(b.active)
-            }
-        }
-    }
-}
-
-// MARK: - 唤醒
-struct WakePane: View {
-    @ObservedObject var s = Settings.shared
-    var body: some View {
-        VStack(spacing: PanelMetrics.gap) {
-            Card {
-                ToggleRow(title: "触碰时自动恢复", isOn: $s.wakeOnInput)
-                if s.wakeOnInput {
-                    RowDivider()
-                    SliderRow(title: "黑屏后先忽略", value: $s.wakeGrace, range: 0...5, step: 0.5, text: formatSeconds(s.wakeGrace))
-                }
-            }
-            PermissionSection()
-            Card {
-                ToggleRow(title: "黑屏时保持电脑唤醒", isOn: $s.keepAwake)
-            }
-        }
-    }
-}
-
 /// 输入监控权限（设置面板与引导页共用）
 struct PermissionSection: View {
     @ObservedObject var r = RealInput.shared
@@ -428,37 +431,29 @@ struct PermissionSection: View {
     }
 }
 
-// MARK: - 关于
-struct AboutPane: View {
+// MARK: - 关于（放在「通用」页）
+struct AboutCard: View {
     @ObservedObject var s = Settings.shared
     var body: some View {
-        VStack(spacing: PanelMetrics.gap) {
-            Card {
-                HStack(spacing: 12) {
-                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 44, height: 44)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("PanelRest").font(.system(size: 15, weight: .semibold))
-                        HStack(spacing: 4) {
-                            Text(verbatim: version)
-                            if !Edition.isAppStore { Text(verbatim: "·"); Text("直装版") }
-                        }
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+        Card {
+            HStack(spacing: 12) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("PanelRest").font(.system(size: 15, weight: .semibold))
+                    HStack(spacing: 4) {
+                        Text(verbatim: version)
+                        if !Edition.isAppStore { Text(verbatim: "·"); Text("直装版") }
                     }
-                    Spacer()
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, PanelMetrics.rowPadding)
-                .padding(.vertical, 10)
-                RowDivider()
-                Row(title: "累计黑屏") {
-                    Text(formatHours(s.totalDarkSeconds)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-                }
-            }
-            HStack(spacing: 8) {
-                Button("使用引导") { AppDelegate.shared?.showOnboarding() }.buttonStyle(PanelButtonStyle(kind: .bar))
-                Button("恢复默认") { confirmReset() }.buttonStyle(PanelButtonStyle(kind: .bar))
                 Spacer()
-                Button("退出") { NSApp.terminate(nil) }.buttonStyle(PanelButtonStyle(kind: .bar))
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("累计黑屏").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(formatHours(s.totalDarkSeconds)).font(.system(size: 13)).monospacedDigit()
+                }
             }
+            .padding(.horizontal, PanelMetrics.rowPadding)
+            .padding(.vertical, 10)
         }
     }
     private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0" }
@@ -466,14 +461,5 @@ struct AboutPane: View {
         if s < 3600 { return String(localized: "\(Int(s / 60)) 分钟") }
         let h = (s / 3600).formatted(.number.precision(.fractionLength(1)))
         return String(localized: "\(h) 小时")
-    }
-    /// 面板是无边框浮层，用系统提醒框确认
-    private func confirmReset() {
-        let a = NSAlert()
-        a.messageText = String(localized: "恢复所有设置为默认值？")
-        a.addButton(withTitle: String(localized: "恢复默认"))
-        a.addButton(withTitle: String(localized: "取消"))
-        NSApp.activate(ignoringOtherApps: true)
-        if a.runModal() == .alertFirstButtonReturn { Settings.shared.resetToDefaults() }
     }
 }

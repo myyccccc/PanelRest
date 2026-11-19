@@ -147,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             p.animates = true                    // 弹出 / 收起保留系统淡入淡出
             p.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             p.contentViewController?.view.window?.makeKey()
+            self.watchOutsideClicks()
             // 切换标签时高度变化不做动画：顶边贴着箭头，底边直接到位，不弹跳
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { p.animates = false }
         }
@@ -158,7 +159,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func popoverDidClose(_ n: Notification) {
+        if let m = outsideClickMonitor { NSEvent.removeMonitor(m); outsideClickMonitor = nil }
         if !Settings.shared.showMenuBarIcon { updateStatusItem() }
+    }
+
+    /// 点面板以外任何地方都关掉面板。
+    /// 系统的 .transient 靠「App 失去激活」判断，菜单栏 App 常常没真正激活（前台仍是别的 App），
+    /// 2026-11-18 实测点 Chrome / Claude 窗口面板不关。全局监听只收到别的 App 的点击，点面板自己和菜单栏图标不受影响。
+    private var outsideClickMonitor: Any?
+    private func watchOutsideClicks() {
+        guard outsideClickMonitor == nil else { return }
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            self?.closeSettings()
+        }
     }
 
     func showOnboarding() {

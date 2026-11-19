@@ -18,6 +18,7 @@ T = {
 "退出 PanelRest": ["Quit PanelRest", "結束 PanelRest", "PanelRest を終了", "PanelRest 종료", "PanelRest beenden", "Quitter PanelRest", "Salir de PanelRest"],
 "退出": ["Quit", "結束", "終了", "종료", "Beenden", "Quitter", "Salir"],
 # ---- 分页 ----
+"黑屏": ["Black Out", "黑屏", "消灯", "화면 끄기", "Abdunkeln", "Extinction", "Apagado"],
 "通用": ["General", "一般", "一般", "일반", "Allgemein", "Général", "General"],
 "触发": ["Activation", "觸發", "起動方法", "실행 방법", "Auslöser", "Déclencheurs", "Activadores"],
 "过渡": ["Transition", "過渡", "トランジション", "전환", "Übergang", "Transition", "Transición"],
